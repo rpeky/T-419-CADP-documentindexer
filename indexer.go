@@ -77,8 +77,10 @@ func (se *SearchEngine) IndexLookup(term string) DocumentIDs {
 }
 
 // https://pkg.go.dev/regexp#Regexp.Split
-// probaly need a nicer regex to ahve words with ' inside them to be tokenised into one term
-var s = regexp.MustCompile(`[^A-Za-z0-9]+`)
+// probaly need a nicer regex to have ords with ' inside them to be tokenised into one term
+// https://www.geeksforgeeks.org/go-language/how-to-split-text-using-regex-in-golang/
+// asked gpt to help with the regex
+var s = regexp.MustCompile(`(?i)[^a-z'’-]+`)
 
 func CountTermsInFile(path string) (map[string]int, int, error) {
 	// this looks like it will be the choke point,
@@ -100,13 +102,15 @@ func CountTermsInFile(path string) (map[string]int, int, error) {
 	scanner := bufio.NewScanner(fd)
 	for scanner.Scan() {
 		lines := s.Split(scanner.Text(), -1)
-		fmt.Println(lines)
+		// fmt.Println(lines)
 		for _, p := range lines {
 			if p == "" {
 				continue
 			}
 			// force lower case
+			// fmt.Println("p: ", p)
 			t := strings.ToLower(p)
+			// fmt.Println("t: ", t)
 			counts[t]++
 			tokens++
 		}
@@ -122,18 +126,37 @@ func CountTermsInFile(path string) (map[string]int, int, error) {
 	return counts, tokens, nil
 }
 
-func SortDocs(docs DocumentIDs) []string {
+type output struct {
+	doc   DocumentID
+	df    int
+	score float64
+}
+
+func SortDocs(se *SearchEngine, term string, docs DocumentIDs) []output {
 
 	if len(docs) == 0 {
 		return nil
 	}
 
-	sorted := make([]string, 0, len(docs))
+	df := len(docs)
+	sorted := make([]output, 0, len(docs))
+
 	for doc := range docs {
-		sorted = append(sorted, doc)
+		sorted = append(sorted, output{
+			doc:   doc,
+			df:    df,
+			score: se.TFIDF(term, doc),
+		})
 	}
 
-	sort.Strings(sorted)
+	// https://stackoverflow.com/questions/18695346/how-can-i-sort-a-mapstringint-by-its-values
+	sort.Slice(sorted, func(i int, j int) bool {
+		if sorted[i].score == sorted[j].score {
+			return sorted[i].doc < sorted[j].doc
+		}
+
+		return sorted[i].score > sorted[j].score
+	})
 
 	return sorted
 }
@@ -203,7 +226,7 @@ func main() {
 	}
 
 	// start interractive portion to return search results
-	fmt.Println("Files parsed\n====Start====")
+	// fmt.Println("Files parsed\n====Start index search====")
 
 	// loop and parse stdin to search and return term
 	inscan := bufio.NewScanner(os.Stdin)
@@ -219,13 +242,12 @@ func main() {
 		fmt.Printf("== %s\n", term)
 
 		docs := se.IndexLookup(term)
-		df := len(docs)
 
 		// make the output determinsitc lol, parse in same order
-		sorted := SortDocs(docs)
+		sorted := SortDocs(se, term, docs)
 
-		for _, doc := range sorted {
-			fmt.Printf("%s,%d,%f\n", doc, df, se.TFIDF(term, doc))
+		for _, out := range sorted {
+			fmt.Printf("%s,%d,%f\n", out.doc, out.df, out.score)
 		}
 	}
 

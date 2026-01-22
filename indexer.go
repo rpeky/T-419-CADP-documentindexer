@@ -28,61 +28,6 @@ func FilePathWalkDir(root string) ([]string, error) {
 	return files, err
 }
 
-/*
-func printFiles(dir string) []string {
-	var (
-		files []string
-		err   error
-	)
-	files, err = FilePathWalkDir(dir)
-	if err != nil {
-		panic(err)
-	}
-
-	for _, file := range files {
-		fmt.Println(file)
-	}
-	return files
-}
-*/
-
-/*
-func test() {
-	// check if the concat for path works
-	pp := filepath.Join("content", "plays")
-	fmt.Println("p:", pp)
-
-	ps := filepath.Join("content", "sonnets")
-	fmt.Println("p:", ps)
-
-	fmt.Println("--------------------------")
-
-	//test saving pp and ps as a list and print output
-	var (
-		longlist []string
-		temp1    []string
-		temp2    []string
-	)
-
-	// print the files from pp and ps
-	temp1 = printFiles(pp)
-	temp2 = printFiles(ps)
-
-	fmt.Println("--------------------------")
-
-	// https://stackoverflow.com/questions/59578712/how-to-concatenate-two-arrays-in-go
-	longlist = append(longlist, temp1[:]...)
-	longlist = append(longlist, temp2[:]...)
-
-	fmt.Println("final test--------------------------")
-
-	for _, file := range longlist {
-		fmt.Println(file)
-	}
-
-}
-*/
-
 // implement recommended support variables / structs
 
 type DocumentID = string
@@ -132,6 +77,7 @@ func (se *SearchEngine) IndexLookup(term string) DocumentIDs {
 }
 
 // https://pkg.go.dev/regexp#Regexp.Split
+// probaly need a nicer regex to ahve words with ' inside them to be tokenised into one term
 var s = regexp.MustCompile(`[^A-Za-z0-9]+`)
 
 func CountTermsInFile(path string) (map[string]int, int, error) {
@@ -150,9 +96,11 @@ func CountTermsInFile(path string) (map[string]int, int, error) {
 	counts := make(map[string]int)
 	tokens := 0
 
+	// need to refine, go string lib split seems to split words with ' in it
 	scanner := bufio.NewScanner(fd)
 	for scanner.Scan() {
 		lines := s.Split(scanner.Text(), -1)
+		fmt.Println(lines)
 		for _, p := range lines {
 			if p == "" {
 				continue
@@ -241,13 +189,6 @@ func main() {
 		os.Exit(2)
 	}
 
-	/*
-		// sancheck output
-		for _, loc := range files {
-			fmt.Println(loc)
-		}
-	*/
-
 	// run engine constructor
 	se := iniSE()
 
@@ -260,6 +201,9 @@ func main() {
 		}
 		se.AddDocument(loc, counts, tokens)
 	}
+
+	// start interractive portion to return search results
+	fmt.Println("Files parsed\n====Start====")
 
 	// loop and parse stdin to search and return term
 	inscan := bufio.NewScanner(os.Stdin)

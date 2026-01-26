@@ -7,11 +7,14 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 )
 
-func FilePathWalkDir(root string) ([]string, error) {
+func FileSearch(root string) ([]string, error) {
 	// had help/reference on how to read filenames from
 	// https://stackoverflow.com/questions/14668850/list-directory-in-go
 	var files []string
@@ -80,7 +83,8 @@ func (se *SearchEngine) IndexLookup(term string) DocumentIDs {
 // probaly need a nicer regex to have ords with ' inside them to be tokenised into one term
 // https://www.geeksforgeeks.org/go-language/how-to-split-text-using-regex-in-golang/
 // asked gpt to help with the regex
-var s = regexp.MustCompile(`(?i)[^a-z'’-]+`)
+// var s = regexp.MustCompile(`(?i)[^a-z'’-]+`)
+var s = regexp.MustCompile(`[^A-Za-z'’\-–]+`)
 
 func CountTermsInFile(path string) (map[string]int, int, error) {
 	// this looks like it will be the choke point,
@@ -100,6 +104,11 @@ func CountTermsInFile(path string) (map[string]int, int, error) {
 
 	// need to refine, go string lib split seems to split words with ' in it
 	scanner := bufio.NewScanner(fd)
+
+	// increase buffer size
+	buf := make([]byte, 0, 64*1024)
+	scanner.Buffer(buf, 1024*1024)
+
 	for scanner.Scan() {
 		lines := s.Split(scanner.Text(), -1)
 		// fmt.Println(lines)
@@ -124,6 +133,68 @@ func CountTermsInFile(path string) (map[string]int, int, error) {
 	}
 
 	return counts, tokens, nil
+}
+
+// Index all files (call CountTermsInFile concurrently)
+type docResult struct {
+	doc    DocumentID
+	counts map[string]int
+	tokens int
+	err    error
+}
+
+func IndexFiles(se *SearchEngine, files []string, workers int) error {
+	paths := make(chan string)
+	results := make(chan docResult, workers*2)
+
+	var wg sync.WaitGroup
+
+	// put workers in a wg
+	// spawn multiple workers to read files
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+			for p := range paths {
+				c, t, err := CountTermsInFile(p)
+				results <- docResult{
+					doc:    p,
+					counts: c,
+					tokens: t,
+					err:    err,
+				}
+			}
+		}()
+	}
+
+	// close results when workers are done
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	// feed paths
+	go func() {
+		for _, f := range files {
+			paths <- f
+		}
+
+		close(paths)
+	}()
+
+	// reducer: one writer to se
+	var firstErr error
+	for r := range results {
+		if r.err != nil {
+			if firstErr == nil {
+				firstErr = r.err
+			}
+			continue
+		}
+		se.AddDocument(r.doc, r.counts, r.tokens)
+	}
+	return firstErr
 }
 
 type output struct {
@@ -161,6 +232,8 @@ func SortDocs(se *SearchEngine, term string, docs DocumentIDs) []output {
 	return sorted
 }
 
+// Mathematical function implementation
+
 func (se *SearchEngine) TermFrequency(term string, doc DocumentID) float64 {
 	// tf(t,d) = n(t,d) / total terms
 	// type cast as float so i can divide
@@ -196,6 +269,20 @@ func (se *SearchEngine) TFIDF(term string, doc DocumentID) float64 {
 	return se.TermFrequency(term, doc) * se.InverseDocumentFrequency(term)
 }
 
+func IndexBuildSeq(se *SearchEngine, files []string) error {
+	// sequential approach (non concurrent build)
+	for _, loc := range files {
+		c, t, err := CountTermsInFile(loc)
+		if err != nil {
+			return err
+		}
+		se.AddDocument(loc, c, t)
+	}
+	return nil
+}
+
+// Main program ------------------------------------------------------------------------------------
+
 func main() {
 
 	if len(os.Args) != 2 {
@@ -206,24 +293,35 @@ func main() {
 	path := os.Args[1]
 
 	// find the files
-	files, err := FilePathWalkDir(path)
+	files, err := FileSearch(path)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "filepath walk error: ", err)
 		os.Exit(2)
 	}
 
-	// run engine constructor
-	se := iniSE()
-
-	// in the content dir extract from each file
-	for _, loc := range files {
-		counts, tokens, err := CountTermsInFile(loc)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "file read error: ", err)
-			os.Exit(3)
-		}
-		se.AddDocument(loc, counts, tokens)
+	seseq := iniSE()
+	t0 := time.Now()
+	err = IndexBuildSeq(seseq, files)
+	dseq := time.Since(t0)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "seq index error:", err)
+		os.Exit(4)
 	}
+
+	// run engine constructor for concurrent engine build
+	se := iniSE()
+	workers := runtime.NumCPU()
+	t1 := time.Now()
+	err = IndexFiles(se, files, workers)
+	dconc := time.Since(t1)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "index error:", err)
+		os.Exit(5)
+	}
+
+	// compare time diff between seq and conc runs
+	fmt.Fprintf(os.Stderr, "seq:  %v  (%0.2f files/s)\n", dseq, float64(len(files))/dseq.Seconds())
+	fmt.Fprintf(os.Stderr, "conc: %v  (%0.2f files/s) workers=%d speedup=%0.2fx\n", dconc, float64(len(files))/dconc.Seconds(), workers, dseq.Seconds()/dconc.Seconds())
 
 	// start interractive portion to return search results
 	// fmt.Println("Files parsed\n====Start index search====")
@@ -254,6 +352,6 @@ func main() {
 	inErr := inscan.Err()
 	if inErr != nil {
 		fmt.Fprintln(os.Stderr, "stdin", inErr)
-		os.Exit(4)
+		os.Exit(5)
 	}
 }

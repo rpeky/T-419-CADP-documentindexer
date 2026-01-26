@@ -11,7 +11,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"time"
+	//"time"
 )
 
 func FileSearch(root string) ([]string, error) {
@@ -299,29 +299,34 @@ func main() {
 		os.Exit(2)
 	}
 
-	seseq := iniSE()
-	t0 := time.Now()
-	err = IndexBuildSeq(seseq, files)
-	dseq := time.Since(t0)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "seq index error:", err)
-		os.Exit(4)
-	}
+	/*
+		// run engine constructor for sequential engine build
+		seseq := iniSE()
+		t0 := time.Now()
+		err = IndexBuildSeq(seseq, files)
+		dseq := time.Since(t0)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "seq index error:", err)
+			os.Exit(4)
+		}
+	*/
 
 	// run engine constructor for concurrent engine build
 	se := iniSE()
 	workers := runtime.NumCPU()
-	t1 := time.Now()
+	//t1 := time.Now()
 	err = IndexFiles(se, files, workers)
-	dconc := time.Since(t1)
+	//dconc := time.Since(t1)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "index error:", err)
 		os.Exit(5)
 	}
 
-	// compare time diff between seq and conc runs
-	fmt.Fprintf(os.Stderr, "seq:  %v  (%0.2f files/s)\n", dseq, float64(len(files))/dseq.Seconds())
-	fmt.Fprintf(os.Stderr, "conc: %v  (%0.2f files/s) workers=%d speedup=%0.2fx\n", dconc, float64(len(files))/dconc.Seconds(), workers, dseq.Seconds()/dconc.Seconds())
+	/*
+		// compare time diff between seq and conc runs
+		fmt.Fprintf(os.Stderr, "seq:  %v  (%0.2f files/s)\n", dseq, float64(len(files))/dseq.Seconds())
+		fmt.Fprintf(os.Stderr, "conc: %v  (%0.2f files/s) workers=%d speedup=%0.2fx\n", dconc, float64(len(files))/dconc.Seconds(), workers, dseq.Seconds()/dconc.Seconds())
+	*/
 
 	// start interractive portion to return search results
 	// fmt.Println("Files parsed\n====Start index search====")

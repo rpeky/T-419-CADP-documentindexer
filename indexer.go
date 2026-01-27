@@ -11,7 +11,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	//"time"
+	"time"
 )
 
 func FileSearch(root string) ([]string, error) {
@@ -151,7 +151,8 @@ func IndexFiles(se *SearchEngine, files []string, workers int) error {
 
 	// put workers in a wg
 	// spawn multiple workers to read files
-	for i := 0; i < workers; i++ {
+	for range workers {
+
 		wg.Add(1)
 
 		go func() {
@@ -281,6 +282,13 @@ func IndexBuildSeq(se *SearchEngine, files []string) error {
 	return nil
 }
 
+func checkmode(mode string) string {
+	if mode == "" {
+		return "conc"
+	}
+	return mode
+}
+
 // Main program ------------------------------------------------------------------------------------
 
 func main() {
@@ -299,34 +307,32 @@ func main() {
 		os.Exit(2)
 	}
 
-	/*
-		// run engine constructor for sequential engine build
-		seseq := iniSE()
-		t0 := time.Now()
-		err = IndexBuildSeq(seseq, files)
-		dseq := time.Since(t0)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "seq index error:", err)
-			os.Exit(4)
-		}
-	*/
+	// add timing san check
+	t0 := time.Now()
 
 	// run engine constructor for concurrent engine build
 	se := iniSE()
-	workers := runtime.NumCPU()
-	//t1 := time.Now()
-	err = IndexFiles(se, files, workers)
-	//dconc := time.Since(t1)
+
+	// for tests to run sequential mode to compare
+	mode := strings.ToLower(strings.TrimSpace(os.Getenv("INDEX_MODE")))
+
+	if mode == "seq" {
+		err = IndexBuildSeq(se, files)
+	} else {
+		// else run normally
+		// setup and read env for test or normal mode
+		workers := runtime.NumCPU()
+		err = IndexFiles(se, files, workers)
+	}
+
+	// report time to build to stderr
+	d := time.Since(t0)
+	fmt.Fprintf(os.Stderr, "BUILD mode=%s | files=%d | seconds=%.6f\n", checkmode(mode), len(files), d.Seconds())
+
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "index error:", err)
 		os.Exit(5)
 	}
-
-	/*
-		// compare time diff between seq and conc runs
-		fmt.Fprintf(os.Stderr, "seq:  %v  (%0.2f files/s)\n", dseq, float64(len(files))/dseq.Seconds())
-		fmt.Fprintf(os.Stderr, "conc: %v  (%0.2f files/s) workers=%d speedup=%0.2fx\n", dconc, float64(len(files))/dconc.Seconds(), workers, dseq.Seconds()/dconc.Seconds())
-	*/
 
 	// start interractive portion to return search results
 	// fmt.Println("Files parsed\n====Start index search====")

@@ -1,26 +1,30 @@
-### How to Run Program: 
+## How to Run Program: 
 
-To run the program, add your test files into a chosen directory. Then, run the main program by the command: ` go run indexer.go ${DIRECTORY} `. After seeing the stderr message showing the build stats, you can search up any term (by typing in the word and pressing enter) in the program until terminated (e.g. via ctrl-c). 
+To run the program, add your test files into a chosen directory. Then, run the main program by the command: 
 
-### File Description: 
+``` go run indexer.go ${DIRECTORY} ``` 
+
+After seeing the stderr message showing the build stats, you can search up any term (by typing in the word and pressing enter) in the program until terminated (e.g. via ctrl-c). 
+
+## File Description: 
 
 The submission contains the following files and folders: 
 
-- agentlogs: A folder containing AI queries to make understanding the scope and a rubber duck to sanity check code understanding 
+- **/agentlogs:** A folder containing AI queries to make understanding the scope and a rubber duck to sanity check code understanding 
 
-- tests: A folder containing a small bash script to run the program against a list of known words n Shakespeare and compare output difference. Also checks the build time for the search engine between sequential and non-sequential modes to sanity check if the goroutines are doing anything to speed up performance over iterative execution. 
+- **/tests:** A folder containing a small bash script to run the program against a list of known words n Shakespeare and compare output difference. Also checks the build time for the search engine between sequential and non-sequential modes to sanity check if the goroutines are doing anything to speed up performance over iterative execution. 
 
-- AUTHORS: A text file containing group members and respective emails. 
+- **AUTHORS:** A text file containing group members and respective emails. 
 
-- README: A text file describing the program and justification for program design. 
+- **README:** A text file describing the program and justification for program design. 
 
-- indexer.go: The go file containing all logic for the document indexer. 
+- **indexer.go:** The go file containing all logic for the document indexer. 
 
-### Program Explanation: 
+## Program Explanation: 
 
 The document indexer has two components, the first is to build the search engine by indexing the files from the target directory, then a looping query to retrieve the search term from the search engine index, returning the documents the queried words are in, ordered by significance using tf-idf. 
 
-#### Main Program – *func main()* [line 304]
+### Main Program – *func main()* [line 304]
 
 This function is the main entry point for the program, which is called once the above command is called in the terminal. It firsts checks if the directory provided is valid, returning an error message otherwise and exiting the program. Then, it will find the files in the directory, again returning an error message if the filepath is not found and exiting the program. Once it has gone through these sanity checks, it will set up environment checks to handle which mode (sequential or concurrent) will be used to execute the document indexing, which is by default using the concurrent execution for the assignment.  
 
@@ -28,11 +32,11 @@ It then executes the first component of the program, building the search engine 
 
 Only once this component has succeeded do we enter the second interactive component, using a for loop on line 353 to check for when a term has been given by the user. If given a term, the function then searches for the documents that contain it using ` docs := se.IndexLookup(term) ` on line 363, before sorting them on line 366 and printing out any output. If the document scanning produced any errors, the program will return the error message and exit the program, else it will continue this looping query until a user input to terminate the program . 
 
-#### File search – *func FileSearch(root string)* [line 17] 
+### File search – *func FileSearch(root string)* [line 17] 
 
 Returns the filepaths of parsable files using the directory path provided by the program argv input, by checking if the object is a normal file, and appends it into a list of output paths to read from. 
 
-#### Document Indexing – *func IndexFiles(se *SearchEngine, files []string, workers int)* [line 148] 
+### Document Indexing – *func IndexFiles(se *SearchEngine, files []string, workers int)* [line 148] 
 
 For the purposes of the assignment, we will look specifically at the concurrent implementation of the logic.  
 
@@ -46,19 +50,19 @@ While the worker files are counting terms, two other goroutines are created. One
 
 Finally, while all goroutines are running concurrently, the function checks for results in a for loop [line 189], taking results off the belt and adding them to the search engine using ` se.AddDocument(r.doc, r.counts, r.tokens) ` on line 196. If any of the previous files returned an error while counting, the function will keep track of the error found in firstErr on line 188, before returning that line to the main function to prevent panics. 
 
-##### Term Counting – *func CountTermsInFile(p)* [line 90] 
+#### Term Counting – *func CountTermsInFile(p)* [line 90] 
 
 The function opens the provided file, checking if there are read errors which will immediately return an error to the IndexFiles function. If no errors are found, it will proceed use a scanner with an increased buffer size to scan the text line by line, ensuring that the program will not fail with long chunks of text. Using a for loop on line 113 to scan each line, it will split the string using a regex to check and convert all valid word strings to lowercase, before adding them to a map counter associated to each unique word and a total token counter. In case of a scanner error, the function will also return an error to the IndexFiles function, else it will return the word count map and token counter. 
 
 Since the function creates its own word dictionary and token counter, and does not access any global variables, we can ensure there will be no data race while the word count is executed. By using scanner to search line by line in a linear fashion, we can also ensure no possible deadlocks as the file will eventually run out of lines and terminate the function instance. 
 
-##### Term Adding – *func AddDocument(r.doc, r.counts, r.tokens)* [line 57] 
+#### Term Adding – *func AddDocument(r.doc, r.counts, r.tokens)* [line 57] 
 
 This is a helper function for the SearchEngine struct, storing the raw data from each file into the permanent storage. It first adds the map of words and their frequencies, as well as the total tokens associated with the given document ID. Then, it checks for each word mapping in the document exists, creating a new set if it is the first time it has been seen across the files, and makes an association for the document ID to its word set. 
 
 While the function is not thread safe on its own, we prevent data races through function design in IndexFiles, using the results channel to ensure only one file result is parsed at a time. 
 
-#### Search Engine – *func SortDocs(se *SearchEngine, term string, docs DocumentIDs)* [line 217] 
+### Search Engine – _func SortDocs(se *SearchEngine, term string, docs DocumentIDs)_ [line 217] 
 
 This function looks at a given list of documents that contain a given term, and determines the order in which it should be presented to the user. If no documents are given, it returns nothing.  
 
@@ -66,6 +70,6 @@ It returns a list of outputs sorted by the TFIDF value by sorting against the TF
 
 Once all documents have been added into the sorted array, we simply sort the document in descending order by score using Go’s sorting engine in ` sort.Slice ` on line 225. In the case where two documents have the same score, we fall back to sorting alphabetically, to ensure a stable output. Once all documents have been sorted, we return the sorted array for the main function to print. 
 
-#### Search Engine – *func TFIDF(term string, doc DocumentID)* [line 279] 
+#### Score Calculation – *func TFIDF(term string, doc DocumentID)* [line 279] 
 
 The TFIDF helper function calculates each document’s score by following the tf-idf statistic (Spärck Jones, 1972), where a term is said to have high weight if it occurs infrequently (high idf) and more frequently in that document (high tf). The formula uses the helper functions TermFrequency [line 248] and InverseDocumentFrequency [line 262] to calculate the frequency of a term in a document over the number of documents the term appears in. 

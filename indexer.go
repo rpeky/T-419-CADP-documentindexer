@@ -147,6 +147,7 @@ type docResult struct {
 
 func IndexFiles(se *SearchEngine, files []string, workers int) error {
 	paths := make(chan string)
+	// make the buffer larger to reduce chance of blocking
 	results := make(chan docResult, workers*2)
 
 	var wg sync.WaitGroup
@@ -331,7 +332,6 @@ func main() {
 		// else run normally
 		// setup and read env for test or normal mode
 		// it just feels natural to use the total number of logical cpus as the limit for workers
-		// can probably just double the workers if the workload is low though
 		workers := runtime.NumCPU()
 		err = IndexFiles(se, files, workers)
 	}

@@ -20,6 +20,7 @@ func FileSearch(root string) ([]string, error) {
 	var files []string
 
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		// return an error so the code dosen't just panic
 		if err != nil {
 			return err
 		}
@@ -93,7 +94,7 @@ func CountTermsInFile(path string) (map[string]int, int, error) {
 
 	fd, err := os.Open(path)
 
-	// check for read error
+	// check for read error, return th error
 	if err != nil {
 		return nil, 0, err
 	}
@@ -105,7 +106,7 @@ func CountTermsInFile(path string) (map[string]int, int, error) {
 	// need to refine, go string lib split seems to split words with ' in it
 	scanner := bufio.NewScanner(fd)
 
-	// increase buffer size
+	// increase buffer size in case the file is large, no way its larger than 1MB right
 	buf := make([]byte, 0, 64*1024)
 	scanner.Buffer(buf, 1024*1024)
 
@@ -128,6 +129,7 @@ func CountTermsInFile(path string) (map[string]int, int, error) {
 	// check for bufio scanner error
 	scErr := scanner.Err()
 
+	// throw an error so the code dosen't panic if the parsing errors out
 	if scErr != nil {
 		return nil, 0, scErr
 	}
@@ -150,14 +152,17 @@ func IndexFiles(se *SearchEngine, files []string, workers int) error {
 	var wg sync.WaitGroup
 
 	// put workers in a wg
-	// spawn multiple workers to read files
+	// spawn multiple workers/goroutines to read files
+	// workers don't actually touch the search engine itself, just read the data
 	for range workers {
 
 		wg.Add(1)
 
 		go func() {
 			defer wg.Done()
+			// receive and consume the filepath from the path <- f
 			for p := range paths {
+				// parse the file and send the result to the results channel queue
 				c, t, err := CountTermsInFile(p)
 				results <- docResult{
 					doc:    p,
@@ -170,6 +175,7 @@ func IndexFiles(se *SearchEngine, files []string, workers int) error {
 	}
 
 	// close results when workers are done
+	// waits and blocks here until all are done
 	go func() {
 		wg.Wait()
 		close(results)
@@ -186,13 +192,16 @@ func IndexFiles(se *SearchEngine, files []string, workers int) error {
 
 	// reducer: one writer to se
 	var firstErr error
+	// consume the data from the channel
 	for r := range results {
+		// check for errors from writers
 		if r.err != nil {
 			if firstErr == nil {
 				firstErr = r.err
 			}
 			continue
 		}
+		// only the reducer calls the
 		se.AddDocument(r.doc, r.counts, r.tokens)
 	}
 	return firstErr
@@ -321,6 +330,8 @@ func main() {
 	} else {
 		// else run normally
 		// setup and read env for test or normal mode
+		// it just feels natural to use the total number of logical cpus as the limit for workers
+		// can probably just double the workers if the workload is low though
 		workers := runtime.NumCPU()
 		err = IndexFiles(se, files, workers)
 	}
@@ -347,16 +358,15 @@ func main() {
 			continue
 		}
 
-		// formatting
-		fmt.Printf("== %s\n", term)
-
 		docs := se.IndexLookup(term)
+		// formatting
+		fmt.Printf("== %s (%d)\n", term, len(docs))
 
 		// make the output determinsitc lol, parse in same order
 		sorted := SortDocs(se, term, docs)
 
 		for _, out := range sorted {
-			fmt.Printf("%s,%d,%f\n", out.doc, out.df, out.score)
+			fmt.Printf("%s,%f\n", out.doc, out.score)
 		}
 	}
 

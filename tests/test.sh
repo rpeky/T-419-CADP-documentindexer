@@ -14,14 +14,12 @@ TERMS="$ROOT/tests/terms"
 cat "$TERMS" | go run "$ROOT/indexer.go" "$DIR" > "$ROOT/tests/out.conc" 2> "$ROOT/tests/conc.err"
 echo "---------------------------------------------" >> "$ROOT/tests/out.conc"
 cat "$ROOT/tests/conc.err" >> "$ROOT/tests/out.conc"
-rm -f "$ROOT/tests/conc.err"
 
 
 # sequential test run
 cat "$TERMS" | INDEX_MODE=seq go run "$ROOT/indexer.go" "$DIR" > "$ROOT/tests/out.seq" 2> "$ROOT/tests/seq.err"
 echo "---------------------------------------------" >> "$ROOT/tests/out.seq"
 cat "$ROOT/tests/seq.err" >> "$ROOT/tests/out.seq"
-rm -f "$ROOT/tests/seq.err"
 
 # print the build time for each
 conc_s=$(awk '/^BUILD /{for(i=1;i<=NF;i++) if($i ~ /^seconds=/){split($i,a,"="); print a[2]}}' conc.err)
@@ -39,3 +37,7 @@ echo " "
 
 echo "-------------------DIFF----------------------" 
 diff -u "$ROOT/tests/out.seq" "$ROOT/tests/out.conc" || true
+
+# clean up
+rm -f "$ROOT/tests/conc.err"
+rm -f "$ROOT/tests/seq.err"

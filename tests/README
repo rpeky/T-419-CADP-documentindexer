@@ -1,1 +1,5 @@
 Place test data here.
+
+to run test.sh reference the content dir path to run the indexer on
+
+``` ./test.sh ${DIRECTORY} ``` 
